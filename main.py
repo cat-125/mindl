@@ -1,7 +1,5 @@
 import argparse
 
-from api import commands
-import commands as _commands
 
 def compile(code):
 	result = ''
@@ -13,7 +11,11 @@ def compile(code):
 		args = line.split(' ')[1:]
 		arg = ' '.join(args)
 
-		result += commands[cmd](arg, args)
+		if cmd == 'mlog':
+		    result += line
+		elif cmd == 'print':
+		    content = ' '.join(args[1:])
+		    result += f'print {content}\nprint flush {args[0]}'
 	
 	return result
 
@@ -22,7 +24,7 @@ def compile(code):
 def main():
 	argparser = argparse.ArgumentParser(
 		prog='MindL compiler',
-		description='Programming language for Mindustry',
+		description='MindL is a programming language for Mindustry',
 		usage='python3 main.py [file] [output]',
 	)
 
