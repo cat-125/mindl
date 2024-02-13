@@ -1,1 +1,5 @@
-print message1 "Test" 
+def fn1
+printf "do stuff..."
+endfn
+
+call fn1
