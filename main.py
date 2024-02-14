@@ -148,7 +148,7 @@ def compile(code, offset=0):
         elif cmd == 'printf':
             contents = split_expr(' '.join(args[1:]))
             for c in contents:
-                result += f'print {c}'
+                result += f'print {c}\n'
             result += f'print flush {args[0]}'
         elif cmd == 'print':
             result += 'print ' + arg
@@ -210,10 +210,9 @@ def compile(code, offset=0):
         i += 1
         result += ' //__line'+str(i)
         
-        
-    print(result)
     
-    result += '\n' + functions
+    if functions:
+        result += '\nend\n' + functions
     
     for i, j in enumerate(jumps):
         result = result.replace(f'[__jump_{j}]', str(find_line_with(result.split('\n'), '//__line'+str(jumps[j]))))
@@ -245,13 +244,14 @@ def main():
         with open(args.output, 'w') as f:
             f.write(result)
     else:
-        print(f'Compiled from {args.input}:\n')
+        print(f'Compiled from {args.input}:\n\n----------------')
         if args.format:
             lines = result.split('\n')
             for i in range(len(lines)):
                 print(Style.DIM + f'{str(i):>3} | ' + Style.RESET_ALL + lines[i])
         else:
             print(result)
+        print('----------------')
 
 if __name__ == '__main__':
     main()

@@ -1,5 +1,5 @@
 def fn1
-printf "do stuff..."
+printf message1 "do stuff..."
 endfn
 
 call fn1
