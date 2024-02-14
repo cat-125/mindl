@@ -232,7 +232,7 @@ def main():
 
     argparser.add_argument('-i', '--input', help='File to compile. Defaults to script.mlx if not specified.', default='script.mlx', required=False)
     argparser.add_argument('-o', '--output', help='Output file. Defaults to stdout if not specified.', required=False)
-    argparser.add_argument('-f', '--format', help='Add line numbers to output (only in console)', action='store_false')
+    argparser.add_argument('-f', '--format', help='Add line numbers to output (only in console)', action='store_true')
 
     args = argparser.parse_args()
 
