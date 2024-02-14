@@ -3,14 +3,13 @@ from colorama import Style, just_fix_windows_console
 
 
 LINE_REGEX = re.compile(r"\$\{line(\d+)\}")
-
+debug = False
 
 just_fix_windows_console()
 
-
 def random_str(length=8, charset=None):
     res = ''
-    for i in range(length):
+    for _ in range(length):
         res += random.choice(charset or 'abcdedghijklmnopqrstuvwxyz_')
     return res
 
@@ -48,9 +47,9 @@ def typeof(val):
     if val[0] == val[-1] and val[0] == '"':
         return 'string'
     try:
-        float(i)
+        float(val)
         return "number"
-    finally:
+    except Exception:
         return "var"
 
 
@@ -59,8 +58,8 @@ def compile_value(val):
     if val[0] == '@':
         return val
     try:
-        return float(i)
-    finally:
+        return float(val)
+    except Exception:
         return val
 
 
@@ -85,8 +84,8 @@ def compile_cond(cond):
     }.get(oper, 'always') + f' {a} {b}'
 
 
-# Convert things like '"str1"+"str2"+var' to
-# ['"str1"','"str2"','var']
+# Convert things like '"str1"+@const+var' to
+# ['"str1"','@const','var']
 #
 # TODO: Improve accuracy
 def split_expr(expr):
@@ -96,13 +95,16 @@ def split_expr(expr):
 def compile(code, offset=0):
     code = code.strip()
     result = ''
-    lines = remove_empty_lines(code.split('\n'))
+    lines = code.split('\n')
     stack = []
     functions = ''
     
     i = 0
     while i < len(lines):
-        line = lines[i]
+        line = lines[i].strip()
+        if line == '':
+            i += 1
+            continue
         cmd = line.split(' ')[0]
         args = line.split(' ')[1:]
         arg = ' '.join(args)
@@ -110,8 +112,24 @@ def compile(code, offset=0):
             result = result.replace('\n\n', '\n')
         result = result.strip() + '\n'
 
+        # Basic
         if cmd == 'mlog':
             result += arg
+        elif cmd == 'printf':
+            contents = split_expr(' '.join(args[1:]))
+            for c in contents:
+                result += f'print {c}\n'
+            result += f'print flush {args[0]}'
+        elif cmd == 'print':
+            result += 'print ' + arg
+        elif cmd == 'set':
+            result += f'set {args[0]} {args[1]}'
+        elif cmd == 'end':
+            result += 'end'
+        # Flow control
+        elif cmd == 'jump':
+            t = int(args[0])
+            result += 'jump ${line' + str(t) + f'}} {compile_cond(" ".join(args[1:]))}'
         elif cmd == 'if':
             stack.append(f'if({i})')
             end = len(lines)
@@ -133,8 +151,6 @@ def compile(code, offset=0):
             result += f'jump {content_line+offset} {compile_cond(arg)}\njump {end_line+offset} always false false\n{content}'
             i = end-1
             stack = stack[:-1]
-        elif cmd == 'endif':
-            break
         elif cmd == 'while':
             stack.append(f'while({i})')
             end = len(lines)
@@ -154,25 +170,6 @@ def compile(code, offset=0):
             result += f'{content}\njump {start_line+offset} {compile_cond(arg)}'
             i = end-1
             stack = stack[:-1]
-        elif cmd == 'endwhile':
-            break
-        # Basic
-        elif cmd == 'printf':
-            contents = split_expr(' '.join(args[1:]))
-            for c in contents:
-                result += f'print {c}\n'
-            result += f'print flush {args[0]}'
-        elif cmd == 'print':
-            result += 'print ' + arg
-        elif cmd == 'set':
-            result += f'set {args[0]} {args[1]}'
-        elif cmd == 'jump':
-            t = int(args[0])
-            result += 'jump ${line' + str(t) + f'}} {compile_cond(" ".join(args[1:]))}'
-            #jumps.append(t)
-        elif cmd == 'end':
-            result += 'end'
-        # Advanced
         elif cmd == 'def':
             stack.append(f'fn({i})')
             end = len(lines)
@@ -187,15 +184,14 @@ def compile(code, offset=0):
                         end = j+1
                     stack = stack[:-1]
                 j += 1
-            content = compile('\n'.join(get_lines_between(lines, i, end)), i+2).strip()
+            content = compile('\n'.join(get_lines_between(lines, i+1, end)), i+2).strip()
             functions += f'fn_{arg}:\n{content}\nset @counter __return'
             i = end-1
             stack = stack[:-1]
-        elif cmd == 'endfn':
-            pass
+        elif cmd in ('endif', 'endwhile', 'endfn'):
+            break
         elif cmd == 'call':
             result += f'set __return @counter\nop add __return 2\njump fn_{args[0]}'
-            # TODO
         # World
         elif cmd == 'radar':
             result += 'radar ' + arg
@@ -228,14 +224,17 @@ def compile(code, offset=0):
     lines = result.split('\n')
     for i in range(len(lines)):
         lines[i] = re.sub(LINE_REGEX, lambda x: str(find_line_with(lines, '//__line'+x.group(1))), lines[i])
-        #result = result.replace(f'[__jump_{j}]', str(find_line_with(result.split('\n'), '//__line'+str(jumps[j]))))
     
     #breakpoint()
-    return '\n'.join(lines)#[x.split('//__line')[0] for x in lines])
+    if debug:
+        return '\n'.join(lines)
+    else:
+        return '\n'.join([x.split('//__line')[0] for x in lines if x])
 
 
 
 def main():
+    global debug
     argparser = argparse.ArgumentParser(
         prog='MindL compiler',
         description='MindL is a programming language for Mindustry',
@@ -245,8 +244,11 @@ def main():
     argparser.add_argument('-i', '--input', help='File to compile. Defaults to script.mlx if not specified.', default='script.mlx', required=False)
     argparser.add_argument('-o', '--output', help='Output file. Defaults to stdout if not specified.', required=False)
     argparser.add_argument('-f', '--format', help='Add line numbers to output (only in console)', action='store_true')
+    argparser.add_argument('-d', '--debug', help='Debug mode', action='store_true')
 
     args = argparser.parse_args()
+
+    debug = args.debug
 
     with open(args.input, 'r') as f:
         code = f.read()
