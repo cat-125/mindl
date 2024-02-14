@@ -1,20 +1,5 @@
-print "Hello, world"
+def f
+printf message1, "asd"
+endfn
 
-jump 5
-print "this code will never be executed"
-
-set value true
-
-if value == true
-print "If statement"
-end
-
-while value == true
-print "While loop"
-end
-
-def my_function
-print "Function"
-end
-
-call my_function
+call f
