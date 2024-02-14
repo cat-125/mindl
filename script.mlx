@@ -1,5 +1,4 @@
-def fn1
-printf message1 "do stuff..."
-endfn
-
-call fn1
+print 'do stuff'
+if @this
+print 'do stuff'
+end

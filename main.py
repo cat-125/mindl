@@ -1,5 +1,9 @@
-import argparse, random
+import argparse, random, re
 from colorama import Style, just_fix_windows_console
+
+
+LINE_REGEX = re.compile(r"\$\{line(\d+)\}")
+
 
 just_fix_windows_console()
 
@@ -12,10 +16,11 @@ def random_str(length=8, charset=None):
 
 
 def find_line_with(lines, text):
-    for i in range(len(lines)):
-        if text in lines[i]:
+    for i in range(len(lines)-1):
+        if text in lines[i]+'\n':
             return i
-    return len(lines) - 1
+    print(f'not found {text} in {lines}')
+    return len(lines)-1
 
 
 def get_lines_between(lines, start, end):
@@ -28,6 +33,12 @@ def count_lines(text):
 
 def remove_empty_lines(lines):
     return [x for x in lines if x]
+
+
+def insert_line_before(text, line, i):
+    lines = text.split('\n')
+    lines.insert(i, line)
+    return '\n'.join(lines)
 
 
 def typeof(val):
@@ -55,11 +66,13 @@ def compile_value(val):
 
 def compile_cond(cond):
     cond = cond.strip()
-    if cond == 'always':
+    if cond == 'always' or cond == '':
         return 'always false false'
     cond = cond.split()
-    oper = cond[1]
     a = cond[0]
+    if len(cond) == 1:
+        return f'notEqual {a} null'
+    oper = cond[1]
     b = cond[2]
     return {
         '==': 'equal',
@@ -85,7 +98,6 @@ def compile(code, offset=0):
     result = ''
     lines = remove_empty_lines(code.split('\n'))
     stack = []
-    jumps = {}
     functions = ''
     
     i = 0
@@ -155,9 +167,9 @@ def compile(code, offset=0):
         elif cmd == 'set':
             result += f'set {args[0]} {args[1]}'
         elif cmd == 'jump':
-            id = random_str()
-            result += f'jump [__jump_{id}]'
-            jumps[id] = int(arg)
+            t = int(args[0])
+            result += 'jump ${line' + str(t) + f'}} {compile_cond(" ".join(args[1:]))}'
+            #jumps.append(t)
         elif cmd == 'end':
             result += 'end'
         # Advanced
@@ -209,16 +221,17 @@ def compile(code, offset=0):
         
         i += 1
         result += ' //__line'+str(i)
-        
     
     if functions:
         result += '\nend\n' + functions
     
-    for i, j in enumerate(jumps):
-        result = result.replace(f'[__jump_{j}]', str(find_line_with(result.split('\n'), '//__line'+str(jumps[j]))))
-            
+    lines = result.split('\n')
+    for i in range(len(lines)):
+        lines[i] = re.sub(LINE_REGEX, lambda x: str(find_line_with(lines, '//__line'+x.group(1))), lines[i])
+        #result = result.replace(f'[__jump_{j}]', str(find_line_with(result.split('\n'), '//__line'+str(jumps[j]))))
+    
     #breakpoint()
-    return '\n'.join([x.split('//__line')[0] for x in result.split('\n')])
+    return '\n'.join(lines)#[x.split('//__line')[0] for x in lines])
 
 
 
