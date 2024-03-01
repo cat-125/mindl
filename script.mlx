@@ -1,5 +1,12 @@
-def f
-printf message1, "asd"
-endfn
+mlog l1
+mlog l2
+
+ifnot f
+  printf message1 "asd1"
+  printf message1 "asd2"
+  printf message1 "asd3"
+  printf message1 "asd4"
+  printf message1 "asd5"
+endif
 
 call f

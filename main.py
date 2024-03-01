@@ -1,7 +1,8 @@
 import argparse
 import random
 import re
-from colorama import Style, just_fix_windows_console
+import mappings
+from colorama import Fore, Style, just_fix_windows_console
 
 
 LINE_REGEX = re.compile(r"\$\{line(\d+)\}")
@@ -36,7 +37,13 @@ def find_line_by_number(lines, number):
 
 
 def get_lines_between(lines, start, end):
-    return lines[start+1:end-1]
+    result = []
+    print(lines, start, end)
+    i = start+1
+    while i < end:
+        result.append(lines[i])
+        i += 1
+    return result
 
 
 def count_lines(text):
@@ -86,15 +93,7 @@ def compile_cond(cond):
         return f'notEqual {a} null'
     oper = cond[1]
     b = cond[2]
-    return {
-        '==': 'equal',
-        '!=': 'notEqual',
-        '===': 'strictEqual',
-        '>': 'greaterThan',
-        '<': 'lessThan',
-        '>=': 'greaterThanEq',
-        '<=': 'lessThanEq'
-    }.get(oper, 'always') + f' {a} {b}'
+    return mappings.COMPARSION.get(oper, 'always') + f' {a} {b}'
 
 
 # Convert things like '"str1"+@const+var' to
@@ -136,7 +135,7 @@ def compile(code, offset=0):
         elif cmd == 'printflush':
             line = 'printflush ' + arg
         elif cmd == 'set':
-            line = f'set {args[0]} {args[1]}'
+            line = f'set {arg}'
         # Flow control
         elif cmd == 'jump':
             line = 'jump ${line' + \
@@ -147,59 +146,88 @@ def compile(code, offset=0):
             j = i+1
             while j < end:
                 if lines[j].startswith('if'):
-                    stack.append(f'if({j})')
-                if lines[j].startswith('while'):
-                    stack.append(f'while({j})')
+                    stack.append(f'if@{j}')
+                elif lines[j].startswith('ifnot'):
+                    stack.append(f'ifnot@{j}')
+                elif lines[j].startswith('while'):
+                    stack.append(f'while@{j}')
                 elif lines[j] == 'endif':
                     if len(stack) <= 1:
                         end = j+1
                     stack = stack[:-1]
                 j += 1
             content = compile(
-                '\n'.join(get_lines_between(result, i, end)), i+2).strip()
+                '\n'.join(get_lines_between(lines, i, end)), i+2).strip()
             start_line = len(result)
             end_line = start_line + count_lines(content) + 2
             content_line = start_line + 2
             line = f'jump {content_line+offset} {compile_cond(arg)}\njump {end_line+offset} always false false\n{content}'
             i = end-1
             stack = stack[:-1]
-        elif cmd == 'while':
-            stack.append(f'while({i})')
+        elif cmd == 'ifnot':
+            stack.append(f'ifnot@{i}')
             end = len(lines)
             j = i+1
             while j < end:
                 if lines[j].startswith('if'):
-                    stack.append(f'if({j})')
-                if lines[j].startswith('while'):
-                    stack.append(f'while({j})')
+                    stack.append(f'if@{j}')
+                elif lines[j].startswith('ifnot'):
+                    stack.append(f'ifnot@{j}')
+                elif lines[j].startswith('while'):
+                    stack.append(f'while@{j}')
+                elif lines[j] == 'endif':
+                    if len(stack) <= 1:
+                        end = j+1
+                    stack = stack[:-1]
+                j += 1
+            content = compile(
+                '\n'.join(get_lines_between(lines, i, end)), i+1).strip()
+            start_line = len(result)
+            end_line = start_line + count_lines(content) + 1
+            line = f'jump {end_line+offset} {compile_cond(arg)}\n{content}'
+            i = end-1
+            stack = stack[:-1]
+        elif cmd == 'while':
+            stack.append(f'while@{i}')
+            end = len(lines)
+            j = i+1
+            while j < end:
+                if lines[j].startswith('if'):
+                    stack.append(f'if@{j}')
+                elif lines[j].startswith('ifnot'):
+                    stack.append(f'ifnot@{j}')
+                elif lines[j].startswith('while'):
+                    stack.append(f'while@{j}')
                 elif lines[j] == 'endwhile':
                     if len(stack) <= 1:
                         end = j+1
                     stack = stack[:-1]
                 j += 1
             content = compile(
-                '\n'.join(get_lines_between(result, i, end)), i+1).strip()
+                '\n'.join(get_lines_between(lines, i, end)), i+1).strip()
             start_line = len(result)
             line = f'{content}\njump {start_line+offset} {compile_cond(arg)}'
             i = end-1
             stack = stack[:-1]
         elif cmd == 'def':
-            stack.append(f'fn({i})')
+            stack.append(f'fn@{i}')
             end = len(lines)
             j = i+1
             while j < end:
                 if lines[j].startswith('if'):
-                    stack.append(f'if({j})')
-                if lines[j].startswith('while'):
-                    stack.append(f'while({j})')
+                    stack.append(f'if@{j}')
+                elif lines[j].startswith('ifnot'):
+                    stack.append(f'ifnot@{j}')
+                elif lines[j].startswith('while'):
+                    stack.append(f'while@{j}')
                 elif lines[j] == 'endfn':
                     if len(stack) <= 1:
                         end = j+1
                     stack = stack[:-1]
                 j += 1
-            content = compile(
-                '\n'.join(get_lines_between(result, i+1, end)), i+2).strip()
-            functions += f'fn_{arg}:\n{content}\nset @counter __return'
+            source = '\n'.join(get_lines_between(lines, i, end))
+            content = compile(source, i+1)
+            functions += f'fn_{arg}:\n{content}\nset @counter __return\n'
             i = end-1
             stack = stack[:-1]
         elif cmd in ('endif', 'endwhile', 'endfn'):
@@ -224,18 +252,20 @@ def compile(code, offset=0):
             line = 'uradar ' + arg
         elif cmd == 'ulocate':
             line = 'ulocate ' + arg
-        # Debug
+        # Debugging
         elif cmd == 'setstatus':
             line = f'set __status {arg}'
         # Command not found
         else:
             line = f'set __status "Unknown command "{cmd}" on line {i+offset}"'
+            print(Fore.YELLOW + f'WARNING: Unknown command "{cmd}" on line {i+offset}' + Style.RESET_ALL)
 
         i += 1
-        result.append({
-            'text': line,
-            'source_line': i
-        })
+        if line:
+            result.append({
+                'text': line,
+                'source_line': i
+            })
     
     if debug:
         print(result, end='\n\n')
@@ -246,7 +276,7 @@ def compile(code, offset=0):
         line['text'] = re.sub(LINE_REGEX, lambda x: str(
             find_line_by_number(result, int(x.group(1)))), line['text'])
         if debug:
-            output += line['text'] + ' // from line ' + str(line['source_line']) + '\n'
+            output += line['text'] + ' // from line ' + str(line['source_line'] + offset) + '\n'
         else:
             output += line['text'] + '\n'
 
@@ -270,9 +300,9 @@ def main():
     argparser.add_argument(
         '-o', '--output', help='Output file. Defaults to stdout if not specified.', required=False)
     argparser.add_argument(
-        '-f', '--format', help='Add line numbers to output (only in console)', action='store_true')
+        '-f', '--format', help='Add line numbers to output (only in console)', action='store_false')
     argparser.add_argument(
-        '-d', '--debug', help='Debug mode', action='store_true')
+        '-d', '--debug', help='Debug mode', action='store_false')
 
     args = argparser.parse_args()
 
